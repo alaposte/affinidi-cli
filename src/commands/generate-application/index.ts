@@ -65,11 +65,16 @@ export default class GenerateApplication extends Command {
       default: 'certification-and-verification',
       options: Object.values(UseCasesAppNames),
     }),
+    'hide-api-key': Flags.boolean({
+      char: 'h',
+      description: 'Hide api-key',
+      default: false,
+    }),
   }
 
   public async run(): Promise<void> {
     const { flags } = await this.parse(GenerateApplication)
-    const { name, platform, 'use-case': useCase } = flags
+    const { name, platform, 'use-case': useCase, 'hide-api-key': hideApiKey } = flags
     const session = getSession()
     const analyticsData: EventDTO = {
       name: 'APPLICATION_GENERATION_STARTED',
@@ -107,7 +112,21 @@ export default class GenerateApplication extends Command {
       CliUx.ux.error(`Failed to generate an application: ${error.message}`)
     }
 
-    this.setUpProject(name)
+    try {
+      if (hideApiKey) {
+        await this.download(
+          'https://github.com/affinidi/elements-reference-app-backend.git',
+          'elements-reference-app-backend',
+        )
+
+        return
+      }
+    } catch (error) {
+      CliUx.ux.info(`Failed to generate an application: ${error.message}`)
+      return
+    }
+
+    this.setUpProject(name, hideApiKey)
     analyticsData.name = 'APPLICATION_GENERATION_COMPLETED'
     await analyticsService.eventsControllerSend(analyticsData)
     CliUx.ux.action.stop('Application generated')
@@ -128,7 +147,7 @@ export default class GenerateApplication extends Command {
     )
   }
 
-  private setUpProject(name: string) {
+  private setUpProject(name: string, hideApiKey: boolean) {
     const activeProjectApiKey = vaultService.get('active-project-api-key')
     const activeProjectDid = vaultService.get('active-project-did')
     const activeProjectId = vaultService.get('active-project-id')
@@ -140,6 +159,17 @@ export default class GenerateApplication extends Command {
     CliUx.ux.info(`Setting up the project`)
 
     try {
+      if (hideApiKey) {
+        Writer.write(path.join(name, '.env'), [
+          'REACT_APP_CLOUD_WALLET_URL=http://localhost:8080/cloud-wallet',
+          'REACT_APP_VERIFIER_URL=http://localhost:8080/affinity-verifier',
+          'REACT_APP_USER_MANAGEMENT_URL=http://localhost:8080/user-management',
+          'REACT_APP_ISSUANCE_URL=http://localhost:8080/console-vc-issuance',
+        ])
+
+        return
+      }
+
       Writer.write(path.join(name, '.env'), [
         'REACT_APP_CLOUD_WALLET_URL=https://cloud-wallet-api.prod.affinity-project.org',
         'REACT_APP_VERIFIER_URL=https://affinity-verifier.prod.affinity-project.org',
